@@ -7,7 +7,9 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from src.adapters.leasingmarkt import LeasingmarktAdapter
 from src.config import AppConfig
+from src.core.crawler import PoliteHttpClient
 from src.core.filters import load_filters_from_file
 
 
@@ -49,9 +51,14 @@ def main(args: Optional[List[str]] = None) -> int:
     output_path = parsed.output or Path(config.output_dir) / "result.xlsx"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # TODO Phase 2: Select adapter, fetch offers, write Excel
+    adapter = LeasingmarktAdapter(http_client=PoliteHttpClient(config.crawler))
     print(f"Loaded {len(filters)} filter(s). Output will go to {output_path}")
+
     for f in filters:
-        print(f"  - {f.id}: source={f.source}, brand={f.brand or '(all)'}, model={f.model or '(all)'}")
+        if not adapter.supports_source(f.source):
+            print(f"  - {f.id}: unsupported source {f.source}", file=sys.stderr)
+            continue
+        offers = adapter.fetch_offers(f)
+        print(f"  - {f.id}: source={f.source}, fetched {len(offers)} offers")
 
     return 0
