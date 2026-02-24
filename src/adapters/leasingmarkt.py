@@ -204,15 +204,29 @@ class LeasingmarktAdapter(BaseAdapter):
         return offers
 
     def _fetch_deals(self, filter_config: Filter) -> list[Offer]:
-        resp = self._client.get("/deals/")
+        resp = self._client.get("/deals/", params={"sort": "rate", "tg": "PRIVATE"})
         return self._parse_cards(resp.text)
 
     def _fetch_listing(self, filter_config: Filter) -> list[Offer]:
         all_offers: list[Offer] = []
         page = 1
+
         max_pages = 5
+
         while page <= max_pages:
-            resp = self._client.get("/listing/", params={"p": page, "tg": "PRIVATE"})
+            # Listing supports query params for contract bounds and mileage.
+            # df/dt: duration min/max (months), ym: minimum km/year.
+            params: dict[str, object] = {
+                "p": page,
+                "sort": "rate",
+                "tg": "PRIVATE",
+                "df": 24,
+                "dt": 36,
+            }
+            if filter_config.km_per_year_min is not None:
+                params["ym"] = int(filter_config.km_per_year_min)
+
+            resp = self._client.get("/listing/", params=params)
             offers = self._parse_cards(resp.text)
             if not offers:
                 break
