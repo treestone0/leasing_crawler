@@ -1,0 +1,25 @@
+[
+  {
+    "id": "filter_1",
+    "source": "deals",
+    "brand": "Volkswagen",
+    "model": "Golf",
+    "brand_blank_ok": false,
+    "model_blank_ok": true,
+    "km_per_year_min": 10000,
+    "km_per_year_max": 15000,
+    "price_per_month_max": 250,
+    "einmalige_kosten_max": 1500,
+    "blacklist_brands": ["Opel", "Dacia"],
+    "blacklist_models": ["Polo"]
+  },
+  {
+    "id": "filter_2",
+    "source": "listing",
+    "brand": "",
+    "model": "",
+    "brand_blank_ok": true,
+    "model_blank_ok": true,
+    "price_per_month_max": 200
+  }
+]
