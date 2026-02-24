@@ -61,11 +61,61 @@ def _slug_to_brand_model(slug: str) -> tuple[str, str]:
     return (brand, model)
 
 
+def _parse_einmalige_kosten_from_detail_html(html: str) -> float:
+    """Extract 'Gesamt, einmalig' from offer detail page HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text("\n", strip=True).replace("\xa0", " ")
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+
+    for i, ln in enumerate(lines):
+        if "Gesamt" in ln and "einmalig" in ln:
+            price = _parse_price(ln)
+            if price:
+                return price
+            for j in range(i + 1, min(i + 8, len(lines))):
+                price = _parse_price(lines[j])
+                if price:
+                    return price
+
+    m = re.search(
+        r"Gesamt,\s*einmalig[\s\S]{0,200}?([\d.,]+)\s*€",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return _parse_price(m.group(1) + " €")
+    return 0.0
+
+
 class LeasingmarktAdapter(BaseAdapter):
     """Adapter for leasingmarkt.de /deals and /listing pages."""
 
     def __init__(self, http_client: PoliteHttpClient | None = None) -> None:
         self._client = http_client or PoliteHttpClient()
+        self._einmalige_kosten_cache: dict[str, float] = {}
+
+    def _einmalige_kosten_from_link(self, link: str) -> float:
+        cached = self._einmalige_kosten_cache.get(link)
+        if cached is not None:
+            return cached
+
+        path = link
+        if link.startswith(BASE):
+            path = link[len(BASE) :]
+        if not path.startswith("/"):
+            # PoliteHttpClient only supports leasingmarkt.de paths; if we can't
+            # derive one, skip detail parsing.
+            self._einmalige_kosten_cache[link] = 0.0
+            return 0.0
+
+        try:
+            resp = self._client.get(path)
+            value = _parse_einmalige_kosten_from_detail_html(resp.text)
+        except Exception:
+            value = 0.0
+
+        self._einmalige_kosten_cache[link] = value
+        return value
 
     def supports_source(self, source: str) -> bool:
         return source in ("deals", "listing")
@@ -107,14 +157,26 @@ class LeasingmarktAdapter(BaseAdapter):
             if " " in variant and (brand or model):
                 variant = variant.replace(brand, "").replace(model, "").strip()
 
-            price_div = card.find(id=lambda x: x and "price-info-content" in str(x))
             price = 0.0
-            if price_div:
-                aria = price_div.find(attrs={"aria-label": True})
-                if aria and "Leasingrate" in aria.get("aria-label", ""):
-                    price = _parse_price(aria["aria-label"])
-                if price == 0:
-                    price = _parse_price(price_div.get_text())
+            # Prefer the semantic aria-label used in current listing cards, e.g.
+            # "Leasingrate: ab 159,00 € inkl. MwSt. monatlich".
+            rate_el = card.find(
+                attrs={
+                    "aria-label": lambda v: isinstance(v, str) and "Leasingrate" in v
+                }
+            )
+            if rate_el and isinstance(rate_el.get("aria-label"), str):
+                price = _parse_price(rate_el["aria-label"])
+
+            # Backward-compatible fallback for older markup.
+            if price == 0:
+                price_div = card.find(id=lambda x: x and "price-info-content" in str(x))
+                if price_div:
+                    aria = price_div.find(attrs={"aria-label": True})
+                    if aria and "Leasingrate" in aria.get("aria-label", ""):
+                        price = _parse_price(aria["aria-label"])
+                    if price == 0:
+                        price = _parse_price(price_div.get_text())
 
             details = card.find(id=lambda x: x and "listing-mileage-content" in str(x))
             km = _parse_km_year(details.get_text()) if details else 0
@@ -122,7 +184,10 @@ class LeasingmarktAdapter(BaseAdapter):
             duration = card.find(id=lambda x: x and "listing-duration-content" in str(x))
             months = _parse_months(duration.get_text()) if duration else 0
 
-            einmalige = _parse_einmalige_kosten(card)
+            # One-time costs are more reliable on the offer detail page.
+            einmalige = self._einmalige_kosten_from_link(link)
+            if einmalige == 0.0:
+                einmalige = _parse_einmalige_kosten(card)
 
             offers.append(
                 Offer(
@@ -147,7 +212,7 @@ class LeasingmarktAdapter(BaseAdapter):
         page = 1
         max_pages = 5
         while page <= max_pages:
-            resp = self._client.get("/listing/", params={"p": page, "tg": "ALL"})
+            resp = self._client.get("/listing/", params={"p": page, "tg": "PRIVATE"})
             offers = self._parse_cards(resp.text)
             if not offers:
                 break
