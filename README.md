@@ -1,6 +1,6 @@
 # Germany Private Leasing Car Crawler
 
-CLI tool that crawls German private leasing car sites (MVP: [leasingmarkt.de](https://leasingmarkt.de)), accepts JSON filters, and outputs an Excel file with car data.
+CLI tool that crawls German private leasing car sites (MVP: [leasingmarkt.de](https://leasingmarkt.de)), accepts JSON filters, and outputs results as **JSON** (Excel export planned in Phase 3).
 
 ## Requirements
 
@@ -17,11 +17,17 @@ pip install -r requirements.txt
 
 ```bash
 python main.py input.json
+python main.py input.json -o output/my_results
 python main.py input.json -o output/my_results.xlsx
 ```
 
 - **input.json** – Path to a JSON file with filter definitions (see [Input format](#input-format))
-- **-o, --output** – Output Excel path (default: `output/result.xlsx`)
+- **-o, --output** – Output base path (e.g. `output/result`) or Excel path (e.g. `output/result.xlsx`). JSON is written next to it.
+
+### Output
+
+- **JSON (current)**: `output/result.json` by default
+- **Excel (planned)**: `output/result.xlsx` (Phase 3)
 
 ## Input Format
 
@@ -74,8 +80,11 @@ A sample file is in `input/sample.json`.
 │   └── config.py        # Configuration
 ├── input/               # Sample input JSONs
 ├── output/              # Generated Excel files
+│                        # (Phase 2 writes JSON here as well)
 ├── main.py              # Entry point
 ├── PLAN.md              # Full project plan
+├── docs/
+│   └── PHASE2.md         # Phase 2 implementation notes
 └── CODE_CHANGE_RESTRICTION.md
 ```
 
